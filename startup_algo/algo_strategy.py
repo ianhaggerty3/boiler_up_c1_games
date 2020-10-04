@@ -6,6 +6,8 @@ import warnings
 from sys import maxsize
 import json
 
+from typing import Dict, List
+
 
 """
 Most of the algo code you write will be in this file unless you create new
@@ -105,7 +107,7 @@ class AlgoStrategy(AlgoCore):
                 factory_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
                 game_state.attempt_spawn(FACTORY, factory_locations)
 
-    def attempt_spawn_refresh(self, game_state: GameState, unit_type, locations):
+    def attempt_spawn_refresh(self, game_state: GameState, unit_type, locations: List[List[int]]):
         """
         Does the same thing as attempt_spawn, but will automatically sell and repurchase units below a health threshold
         """
@@ -114,7 +116,7 @@ class AlgoStrategy(AlgoCore):
                 print(game_state.game_map[location[0], location[1]])
                 # TODO: figure out how to get unit health
 
-    def build_defences(self, game_state):
+    def build_defences(self, game_state: GameState):
         """
         Build basic defenses using hardcoded locations.
         Remember to defend corners and avoid placing units in the front where enemy demolishers can attack them.
@@ -137,7 +139,7 @@ class AlgoStrategy(AlgoCore):
         factory_locations = [[13, 0], [14, 0]]
         game_state.attempt_spawn(FACTORY, factory_locations)
 
-    def build_reactive_defense(self, game_state):
+    def build_reactive_defense(self, game_state: GameState):
         """
         This function builds reactive defenses based on where the enemy scored on us from.
         We can track where the opponent scored by looking at events in action frames 
@@ -148,7 +150,7 @@ class AlgoStrategy(AlgoCore):
             build_location = [location[0], location[1]+1]
             game_state.attempt_spawn(TURRET, build_location)
 
-    def stall_with_interceptors(self, game_state):
+    def stall_with_interceptors(self, game_state: GameState):
         """
         Send out interceptors at random locations to defend our base from enemy moving units.
         """
@@ -171,7 +173,7 @@ class AlgoStrategy(AlgoCore):
             units can occupy the same space.
             """
 
-    def demolisher_line_strategy(self, game_state):
+    def demolisher_line_strategy(self, game_state: GameState):
         """
         Build a line of the cheapest stationary unit so our demolisher can attack from long range.
         """
@@ -180,8 +182,8 @@ class AlgoStrategy(AlgoCore):
         stationary_units = [WALL, TURRET, FACTORY]
         cheapest_unit = WALL
         for unit in stationary_units:
-            unit_class = gamelib.GameUnit(unit, game_state.config)
-            if unit_class.cost[game_state.MP] < gamelib.GameUnit(cheapest_unit, game_state.config).cost[game_state.MP]:
+            unit_class = GameUnit(unit, game_state.config)
+            if unit_class.cost[game_state.MP] < GameUnit(cheapest_unit, game_state.config).cost[game_state.MP]:
                 cheapest_unit = unit
 
         # Now let's build out a line of stationary units. This will prevent our demolisher from running into the enemy base.
@@ -193,7 +195,7 @@ class AlgoStrategy(AlgoCore):
         # By asking attempt_spawn to spawn 1000 units, it will essentially spawn as many as we have resources for
         game_state.attempt_spawn(DEMOLISHER, [24, 10], 1000)
 
-    def least_damage_spawn_location(self, game_state, location_options):
+    def least_damage_spawn_location(self, game_state: GameState, location_options: List[List[int]]):
         """
         This function will help us guess which location is the safest to spawn moving units from.
         It gets the path the unit will take then checks locations on that path to 
@@ -206,13 +208,13 @@ class AlgoStrategy(AlgoCore):
             damage = 0
             for path_location in path:
                 # Get number of enemy turrets that can attack each location and multiply by turret damage
-                damage += len(game_state.get_attackers(path_location, 0)) * gamelib.GameUnit(TURRET, game_state.config).damage_i
+                damage += len(game_state.get_attackers(path_location, 0)) * GameUnit(TURRET, game_state.config).damage_i
             damages.append(damage)
         
         # Now just return the location that takes the least damage
         return location_options[damages.index(min(damages))]
 
-    def detect_enemy_unit(self, game_state, unit_type=None, valid_x = None, valid_y = None):
+    def detect_enemy_unit(self, game_state: GameState, unit_type=None, valid_x = None, valid_y = None):
         total_units = 0
         for location in game_state.game_map:
             if game_state.contains_stationary_unit(location):
@@ -221,7 +223,7 @@ class AlgoStrategy(AlgoCore):
                         total_units += 1
         return total_units
         
-    def filter_blocked_locations(self, locations, game_state):
+    def filter_blocked_locations(self, locations: List[List[int]], game_state: GameState):
         filtered = []
         for location in locations:
             if not game_state.contains_stationary_unit(location):
@@ -245,9 +247,9 @@ class AlgoStrategy(AlgoCore):
             # When parsing the frame data directly, 
             # 1 is integer for yourself, 2 is opponent (StarterKit code uses 0, 1 as player_index instead)
             if not unit_owner_self:
-                gamelib.debug_write("Got scored on at: {}".format(location))
+                debug_write("Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
-                gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
+                debug_write("All locations: {}".format(self.scored_on_locations))
 
 
 if __name__ == "__main__":
