@@ -1,7 +1,16 @@
-Add attempt_spawn_refresh function (details inside)
-Cache health, and respawn to being scored on based on health lost
-Put some reactive defense stuff before restoring normal defense, possibly
+Respond to being scored on based on health lost
+    1. If the enemy scores at an edge, it makes sense to blob upgraded walls there to force them more to the middle
+    2. If the enemy scores in the middle, it would be cool if we could find a way to put more turrets along their path.
+       like, usually only one normal turret and then another response turret attack those enemies. But, if we spawned
+       turrets along the path we know they take to get there, we could do a lot more damage.
+Better prioritize what to do
+    1. Right now, we are using all of our resources, but not in a very smart way. For example, we keep trying to build
+       factories instead of beefing up defence around where we are scored on
+    2. It would be cool to have a priority queue of what to do, or maybe push reactive defense up in trying to do that
+       stuff before other stuff
 Write a function that figures out where to best intercept enemies based on where they are spawning
 Write a function that scans along the edges and determines the easiest place to score, possibly in 2x2 blocks
 Write a function that figures how best to reach that scoring area (could be related to the intercept function)
-More probably
+    1. I made a set of edge paths, which correspond to where we are allowed to spawn things. We could try seeing where
+       each spawn location takes us, and compare that to the easy to score places. Depending on how efficient it is
+       to compute that stuff
