@@ -22,9 +22,12 @@ Advanced strategy tips:
   the actual current map state.
 """
 
+
 class AlgoStrategy(AlgoCore):
     cached_health: int
     health: int
+    all_locations: Set[int]
+    ARENA_SIZE = 28
 
     def __init__(self):
         super().__init__()
@@ -34,7 +37,7 @@ class AlgoStrategy(AlgoCore):
         self.edge_set = self.construct_edge_set
         self.ARENA_SIZE = 28
         self.scored_on_locations = []
-        print('initializing my algo')
+        self.all_locations = set()
 
     def on_game_start(self, config):
         """ 
@@ -120,7 +123,22 @@ class AlgoStrategy(AlgoCore):
 
                 # Lastly, if we have spare SP, let's build some Factories to generate more resources
                 factory_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
+                self.add_locations(factory_locations)
+
                 game_state.attempt_spawn(FACTORY, factory_locations)
+
+        # always try to use more resources
+        self.upgrade_all(game_state)
+
+    def add_locations(self, locations: List[List[int]]):
+        for location in locations:
+            self.all_locations.add(self.point_hash(location))
+
+    def upgrade_all(self, game_state: GameState):
+        for location_hash in self.all_locations:
+            location = self.inv_point_hash(location_hash)
+            if game_state.attempt_upgrade(location) == 0:
+                break
 
     def attempt_spawn_refresh(self, game_state: GameState, unit_type, locations: List[List[int]], threshold=0.75):
         """
@@ -144,7 +162,10 @@ class AlgoStrategy(AlgoCore):
         """
         Since lists aren't hashable, this maps each point on the grid to a unique int, for adding to a collection
         """
-        return 1 * location[0] + 28 * location[1]
+        return 1 * location[0] + self.ARENA_SIZE * location[1]
+
+    def inv_point_hash(self, hash: int):
+        return [hash % self.ARENA_SIZE, hash // self.ARENA_SIZE]
 
     @property
     def construct_edge_set(self) -> Set[int]:
@@ -169,7 +190,6 @@ class AlgoStrategy(AlgoCore):
 
         game_state.attempt_spawn(WALL, new_locations)
 
-
     def build_defences(self, game_state: GameState):
         """
         Build basic defenses using hardcoded locations.
@@ -180,18 +200,19 @@ class AlgoStrategy(AlgoCore):
 
         # Place turrets that attack enemy units
         turret_locations = [[3, 12], [24, 12], [8, 11], [19, 11], [13, 11], [14, 11]]
+        self.add_locations(turret_locations)
         # attempt_spawn will try to spawn units if we have resources, and will check if a blocking unit is already there
         self.attempt_spawn_refresh(game_state, TURRET, turret_locations)
         game_state.attempt_upgrade([[3, 12], [24, 12]])
         self.wall_surround(game_state, turret_locations)
         
         # Place walls in front of turrets to soak up damage for them
-        # wall_locations = [[8, 12], [19, 12]]
-        # game_state.attempt_spawn(WALL, wall_locations)
-        # upgrade walls so they soak more damage
-        # self.attempt_spawn_refresh(game_state, WALL, wall_locations)
+        wall_locations = [[0, 13], [1, 13], [1, 12], [27, 13], [26, 13], [26, 12]]
+        self.add_locations(wall_locations)
+        game_state.attempt_spawn(WALL, wall_locations)
 
         factory_locations = [[13, 0], [14, 0]]
+        self.add_locations(factory_locations)
         self.attempt_spawn_refresh(game_state, FACTORY, factory_locations)
 
     def build_reactive_defense(self, game_state: GameState):
