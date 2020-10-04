@@ -6,7 +6,7 @@ import warnings
 from sys import maxsize
 import json
 
-from typing import Dict, List
+from typing import Dict, List, Set
 
 
 """
@@ -23,11 +23,18 @@ Advanced strategy tips:
 """
 
 class AlgoStrategy(AlgoCore):
+    cached_health: int
+    health: int
+
     def __init__(self):
         super().__init__()
         seed = random.randrange(maxsize)
         random.seed(seed)
         debug_write('Random seed: {}'.format(seed))
+        self.edge_set = self.construct_edge_set
+        self.ARENA_SIZE = 28
+        self.scored_on_locations = []
+        print('initializing my algo')
 
     def on_game_start(self, config):
         """ 
@@ -46,8 +53,8 @@ class AlgoStrategy(AlgoCore):
 
         MP = 1
         SP = 0
+
         # This is a good place to do initial setup
-        self.scored_on_locations = []
 
     def on_turn(self, turn_state):
         """
@@ -58,11 +65,15 @@ class AlgoStrategy(AlgoCore):
         game engine.
         """
         game_state = GameState(self.config, turn_state)
+        self.health = game_state.my_health
+        if game_state.turn_number == 0:
+            self.cached_health = self.health
 
         debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
         self.starter_strategy(game_state)
+        self.cached_health = self.health
 
         game_state.submit_turn()
 
@@ -82,7 +93,8 @@ class AlgoStrategy(AlgoCore):
         # First, place basic defenses
         self.build_defences(game_state)
         # Now build reactive defenses based on where the enemy scored
-        self.build_reactive_defense(game_state)
+        if self.cached_health != self.health:
+            self.build_reactive_defense(game_state)
 
         # If the turn is less than 5, stall with interceptors and wait to see enemy's base
         if game_state.turn_number < 5:
@@ -99,22 +111,64 @@ class AlgoStrategy(AlgoCore):
                 # Sending more at once is better since attacks can only hit a single scout at a time
                 if game_state.turn_number % 2 == 1:
                     # To simplify we will just check sending them from back left and right
-                    scout_spawn_location_options = [[13, 0], [14, 0]]
-                    best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
-                    game_state.attempt_spawn(SCOUT, best_location, 1000)
+                    scout_spawn_location_options = [[10, 3], [17, 3]]
+                    try:
+                        best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
+                        game_state.attempt_spawn(SCOUT, best_location, 1000)
+                    except ValueError:
+                        debug_write('could not find a path for spawning')
 
                 # Lastly, if we have spare SP, let's build some Factories to generate more resources
                 factory_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
                 game_state.attempt_spawn(FACTORY, factory_locations)
 
-    def attempt_spawn_refresh(self, game_state: GameState, unit_type, locations: List[List[int]]):
+    def attempt_spawn_refresh(self, game_state: GameState, unit_type, locations: List[List[int]], threshold=0.75):
         """
         Does the same thing as attempt_spawn, but will automatically sell and repurchase units below a health threshold
         """
         for location in locations:
-            if game_state.game_map[location[0], location[1]] == 1 or 1:
-                print(game_state.game_map[location[0], location[1]])
-                # TODO: figure out how to get unit health
+            if len(game_state.game_map[location]):
+                unit: GameUnit = game_state.game_map[location[0], location[1]][0]
+                if unit.health <= int(unit.max_health * threshold):
+                    game_state.attempt_remove(location)
+                    game_state.attempt_spawn(unit_type, location)
+                    if unit.upgraded:
+                        game_state.attempt_upgrade(location)
+                        debug_write("[DEBUG] replacing upgraded unit")
+                    else:
+                        debug_write("[DEBUG] replacing normal unit")
+            else:
+                game_state.attempt_spawn(unit_type, location)
+
+    def point_hash(self, location: List[int]) -> int:
+        """
+        Since lists aren't hashable, this maps each point on the grid to a unique int, for adding to a collection
+        """
+        return 1 * location[0] + 28 * location[1]
+
+    @property
+    def construct_edge_set(self) -> Set[int]:
+        ret = set()
+        for x in range(14):
+            ret.add(self.point_hash([x, 13 - x]))
+            ret.add(self.point_hash([27 - x, 13 - x]))
+
+        return ret
+
+    def on_edge(self, location: List[int]):
+        return self.point_hash(location) in self.edge_set
+
+    def wall_surround(self, game_state: GameState, locations: List[List[int]]):
+        new_locations = []
+        for location in locations:
+            new_locations += list(filter(
+                # don't want to spawn walls where they could block mobile unit spawns, in most cases
+                lambda entry: not self.on_edge(entry),
+                [[location[0] + 1, location[1]], [location[0] - 1, location[1]], [location[0], location[1] + 1]]
+            ))
+
+        game_state.attempt_spawn(WALL, new_locations)
+
 
     def build_defences(self, game_state: GameState):
         """
@@ -127,17 +181,18 @@ class AlgoStrategy(AlgoCore):
         # Place turrets that attack enemy units
         turret_locations = [[3, 12], [24, 12], [8, 11], [19, 11], [13, 11], [14, 11]]
         # attempt_spawn will try to spawn units if we have resources, and will check if a blocking unit is already there
-        game_state.attempt_spawn(TURRET, turret_locations)
+        self.attempt_spawn_refresh(game_state, TURRET, turret_locations)
         game_state.attempt_upgrade([[3, 12], [24, 12]])
+        self.wall_surround(game_state, turret_locations)
         
         # Place walls in front of turrets to soak up damage for them
         # wall_locations = [[8, 12], [19, 12]]
         # game_state.attempt_spawn(WALL, wall_locations)
         # upgrade walls so they soak more damage
-        # game_state.attempt_upgrade(wall_locations)
+        # self.attempt_spawn_refresh(game_state, WALL, wall_locations)
 
         factory_locations = [[13, 0], [14, 0]]
-        game_state.attempt_spawn(FACTORY, factory_locations)
+        self.attempt_spawn_refresh(game_state, FACTORY, factory_locations)
 
     def build_reactive_defense(self, game_state: GameState):
         """
@@ -206,6 +261,11 @@ class AlgoStrategy(AlgoCore):
         for location in location_options:
             path = game_state.find_path_to_edge(location)
             damage = 0
+
+            if path is None:
+                debug_write('[DEBUG] Could not find path for location:', location)
+                continue
+
             for path_location in path:
                 # Get number of enemy turrets that can attack each location and multiply by turret damage
                 damage += len(game_state.get_attackers(path_location, 0)) * GameUnit(TURRET, game_state.config).damage_i
@@ -230,7 +290,7 @@ class AlgoStrategy(AlgoCore):
                 filtered.append(location)
         return filtered
 
-    def on_action_frame(self, turn_string):
+    def on_action_frame(self, turn_string: str):
         """
         This is the action frame of the game. This function could be called 
         hundreds of times per turn and could slow the algo down so avoid putting slow code here.
@@ -247,9 +307,9 @@ class AlgoStrategy(AlgoCore):
             # When parsing the frame data directly, 
             # 1 is integer for yourself, 2 is opponent (StarterKit code uses 0, 1 as player_index instead)
             if not unit_owner_self:
-                debug_write("Got scored on at: {}".format(location))
+                debug_write("[DEBUG] Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
-                debug_write("All locations: {}".format(self.scored_on_locations))
+                debug_write("[DEBUG] All locations: {}".format(self.scored_on_locations))
 
 
 if __name__ == "__main__":
