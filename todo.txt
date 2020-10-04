@@ -1,0 +1,7 @@
+Add attempt_spawn_refresh function (details inside)
+Cache health, and respawn to being scored on based on health lost
+Put some reactive defense stuff before restoring normal defense, possibly
+Write a function that figures out where to best intercept enemies based on where they are spawning
+Write a function that scans along the edges and determines the easiest place to score, possibly in 2x2 blocks
+Write a function that figures how best to reach that scoring area (could be related to the intercept function)
+More probably
