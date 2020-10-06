@@ -87,7 +87,7 @@ class Utility:
 
         for action in self.action_queue:
             if not action['upgrade']:
-                game_state.attempt_spawn(game_state, action['unit_type'], action['locations'])
+                game_state.attempt_spawn(action['unit_type'], action['locations'])
             else:
                 game_state.attempt_upgrade(action['locations'])
 

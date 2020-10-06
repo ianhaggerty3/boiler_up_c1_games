@@ -112,7 +112,7 @@ class AlgoStrategy(AlgoCore):
             # Sending more at once is better since attacks can only hit a single scout at a time
             if game_state.turn_number % 2 == 1:
                 # To simplify we will just check sending them from back left and right
-                scout_spawn_location_options = [[10, 3], [17, 3]]
+                scout_spawn_location_options = [[10, 3], [11, 2], [16, 3], [17, 3]]
                 try:
                     best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
                     game_state.attempt_spawn(SCOUT, best_location, 1000)
@@ -170,9 +170,16 @@ class AlgoStrategy(AlgoCore):
         We can track where the opponent scored by looking at events in action frames 
         as shown in the on_action_frame function
         """
-        self.wall_surround(self.scored_on_locations)
-        self.utility.prioritize_action('surround_walls' + str(len(self.scored_on_locations)))
 
+        try:
+            self.utility.remove_action('response_turrets')
+            self.utility.remove_action('upgrade_response_turrets')
+        except ValueError:
+            pass
+        self.utility.append_action('upgrade_response_turrets', '', self.scored_on_locations)
+        self.utility.append_action('response_turrets', TURRET, self.scored_on_locations)
+        self.utility.prioritize_action('upgrade_response_turrets')
+        self.utility.prioritize_action('response_turrets')
         # don't really want to put turrets there
         # for location in self.scored_on_locations:
         #     # Build turret one space above so that it doesn't block our own edge spawn locations
@@ -182,7 +189,7 @@ class AlgoStrategy(AlgoCore):
 
     def send_initial_destructor(self, game_state: GameState):
         """
-        Send out a demolisher to get enemy factories at the start.
+        Send out a demolisher to get enemy factories at the start
         """
         game_state.attempt_spawn(DEMOLISHER, [1, 12], num=4)
         game_state.attempt_spawn(INTERCEPTOR, [4, 9])
