@@ -87,7 +87,7 @@ class Utility:
 
         for action in self.action_queue:
             if not action['upgrade']:
-                self.attempt_spawn_refresh(game_state, action['unit_type'], action['locations'])
+                game_state.attempt_spawn(game_state, action['unit_type'], action['locations'])
             else:
                 game_state.attempt_upgrade(action['locations'])
 
@@ -104,24 +104,6 @@ class Utility:
 
         self.append_action('upgrade_all', '', self.all_defenses, upgrade=True)
         self.change_flag = False
-
-    def attempt_spawn_refresh(self, game_state: GameState, unit_type: str, locations: List[List[int]], threshold=0.75):
-        """
-        Does the same thing as attempt_spawn, but will automatically sell and repurchase units below a health threshold
-        """
-        for location in locations:
-            if len(game_state.game_map[location[0], location[1]]):
-                unit: GameUnit = game_state.game_map[location[0], location[1]][0]
-                if unit.health <= int(unit.max_health * threshold):
-                    game_state.attempt_remove(location)
-                    game_state.attempt_spawn(unit_type, location)
-                    if unit.upgraded:
-                        game_state.attempt_upgrade(location)
-                        debug_write("[DEBUG] replacing upgraded unit")
-                    else:
-                        debug_write("[DEBUG] replacing normal unit")
-            else:
-                game_state.attempt_spawn(unit_type, location)
 
     def point_hash(self, location: List[int]) -> int:
         """

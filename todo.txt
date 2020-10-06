@@ -3,14 +3,37 @@ Respond to being scored on based on health lost
     2. If the enemy scores in the middle, it would be cool if we could find a way to put more turrets along their path.
        like, usually only one normal turret and then another response turret attack those enemies. But, if we spawned
        turrets along the path we know they take to get there, we could do a lot more damage.
-Better prioritize what to do
-    1. Right now, we are using all of our resources, but not in a very smart way. For example, we keep trying to build
-       factories instead of beefing up defence around where we are scored on
-    2. It would be cool to have a priority queue of what to do, or maybe push reactive defense up in trying to do that
-       stuff before other stuff
 Write a function that figures out where to best intercept enemies based on where they are spawning
 Write a function that scans along the edges and determines the easiest place to score, possibly in 2x2 blocks
 Write a function that figures how best to reach that scoring area (could be related to the intercept function)
     1. I made a set of edge paths, which correspond to where we are allowed to spawn things. We could try seeing where
        each spawn location takes us, and compare that to the easy to score places. Depending on how efficient it is
        to compute that stuff
+
+
+Notes from https://terminal.c1games.com/watchLive/7211940
+
+Frontal wall defence:
+    Pros:
+        1. Completely negates the value of wide-net interceptors, since these cannot damage walls
+        2. Forces the enemy along a long line of damage (possibly)
+        3. Protects factories, generally
+
+    Cons:
+        1. Costs a lot to maintain and start up
+
+Strategy notes;
+    1. Units will not attempt to self destruct until they have no place to go, so they will move along the wall until
+       that point, soaking up damage
+    2. "sometimes even causing it to double back" is mentioned in the rules, it would be cool to find out how to do this
+    3. If one unit can self-destruct, all units (on the same space) will self-destruct and thus not reach the end.
+       Because of this, it makes a lot of sense to have mutliple waves of attacks, perhaps staggered by one. The first
+       wave should probably be the stronger of the two, adjusted for expected damage
+    4. Turrets initially have more health than walls
+    5. The other team left a small dip in the middle to allow enemies to target there and get trapped
+    6. Based on the old numbers, end-game it is a lot better to blob turrets where you get scored on versus
+    7. For factor "V"s at the base, it is possible to make it not matter which direction you are attacking; it is
+       symmetrical
+    8. Because of speeds, demolisher vangaurds followed by interceptors make the most sense
+    9. Idea: if i can see which structures are marked for destruction, I can plan to blitz with interceptors there
+
