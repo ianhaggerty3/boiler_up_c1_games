@@ -114,6 +114,10 @@ class Utility:
     def inv_point_hash(self, hashed_location: int):
         return [hashed_location % self.ARENA_SIZE, hashed_location // self.ARENA_SIZE]
 
+    def isFull(self, game_state: GameState, location: List[int]) -> bool:
+        if game_state.game_map[location[0], location[1]] is not None:
+            return bool(len(game_state.game_map[location[0], location[1]]))
+
     @property
     def construct_edge_set(self) -> Set[int]:
         ret = set()
