@@ -95,10 +95,14 @@ class AlgoStrategy(AlgoCore):
             self.build_reactive_defense()
 
         # If the turn is less than 5, try to get them with a destructor
+        factory_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
+        
         if game_state.turn_number < 3:
             self.send_initial_destructor(game_state)
+            self.utility.append_action("upgrade_factories", '', factory_locations, upgrade = True)
+            self.utility.append_action("extra_factories", FACTORY, factory_locations)
         if game_state.turn_number == 3:
-            factory_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
+            self.utility.append_action("upgrade_factories", '', factory_locations, upgrade = True)
             self.utility.append_action('extra_factories', FACTORY, factory_locations)
         if game_state.turn_number >= 3:
             # Now let's analyze the enemy base to see where their defenses are concentrated.
@@ -110,6 +114,7 @@ class AlgoStrategy(AlgoCore):
 
             # Only spawn Scouts every other turn
             # Sending more at once is better since attacks can only hit a single scout at a time
+            self.incremental_turret(game_state)
             if game_state.turn_number % 2 == 1:
                 # To simplify we will just check sending them from back left and right
                 scout_spawn_location_options = [[10, 3], [11, 2], [16, 3], [17, 3]]
@@ -121,6 +126,15 @@ class AlgoStrategy(AlgoCore):
 
         # always try to use more resources
         self.utility.attempt_actions(game_state)
+        
+    def incremental_turret(self, game_state):
+        """
+            Attempt to build out Turrets from one side as the game progresses
+        """
+        if(game_state.turn_number > 4):
+            turret_build = [[23 - x, 13] for x in range(game_state.turn_number - 3)]
+            self.utility.append_action("upgrade_front_turrets", '', turret_build, upgrade=True)
+            self.utility.append_action("upgrade_front_turrets", '', turret_build)
 
     def wall_surround(self, locations: List[List[int]]):
         """
@@ -176,7 +190,7 @@ class AlgoStrategy(AlgoCore):
             self.utility.remove_action('upgrade_response_turrets')
         except ValueError:
             pass
-        self.utility.append_action('upgrade_response_turrets', '', self.scored_on_locations)
+        self.utility.append_action('upgrade_response_turrets', '', self.scored_on_locations, True)
         self.utility.append_action('response_turrets', TURRET, self.scored_on_locations)
         self.utility.prioritize_action('upgrade_response_turrets')
         self.utility.prioritize_action('response_turrets')
