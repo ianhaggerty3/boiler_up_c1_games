@@ -26,6 +26,9 @@ class AlgoStrategy(AlgoCore):
     cached_health: int
     health: int
     utility: Utility
+    mobile_units: Set[Union[str, int]]
+    latest_enemy_spawns: List[Union[str, int, List[int]]]
+    latest_enemy_removes: List[Union[str, int, List[int]]]
 
     def __init__(self):
         super().__init__()
@@ -36,6 +39,8 @@ class AlgoStrategy(AlgoCore):
         debug_write('Random seed: {}'.format(seed))
 
         self.scored_on_locations = []
+        self.mobile_units = set()
+        self.latest_enemy_spawns = []
 
         self.utility = Utility()
 
@@ -53,6 +58,11 @@ class AlgoStrategy(AlgoCore):
         SCOUT = config["unitInformation"][3]["shorthand"]
         DEMOLISHER = config["unitInformation"][4]["shorthand"]
         INTERCEPTOR = config["unitInformation"][5]["shorthand"]
+
+        # index values used in action frames
+        self.mobile_units.add(3)
+        self.mobile_units.add(4)
+        self.mobile_units.add(5)
 
         MP = 1
         SP = 0
@@ -270,6 +280,29 @@ class AlgoStrategy(AlgoCore):
                 filtered.append(location)
         return filtered
 
+    def analyze_corner(self, game_state: GameState, id=1) -> List[int]:
+        if id == 1:
+            corner_spaces = [[]]
+        else:
+            corner_spaces = [[]]
+
+        # [turrets, upgraded_turrets, walls, upgraded_walls, factories, upgraded_factories]
+        count_list = [0, 0, 0, 0, 0, 0]
+        for space in corner_spaces:
+            if len(game_state.game_map[space[0], space[1]]):
+                unit: GameUnit = game_state.game_map[space[0], space[1]][0]
+                index_add = 1 if unit.upgraded else 0
+                index = -1
+                if unit.unit_type == TURRET:
+                    index = 0 + index_add
+                elif unit.unit_type == WALL:
+                    index = 2 + index_add
+                elif unit.unit_type == FACTORY:
+                    index = 4 + index_add
+                count_list[index] += 1
+
+        return count_list
+
     def on_action_frame(self, turn_string: str):
         """
         This is the action frame of the game. This function could be called 
@@ -281,15 +314,30 @@ class AlgoStrategy(AlgoCore):
         state = json.loads(turn_string)
         events = state["events"]
         breaches = events["breach"]
+
+        self.latest_enemy_spawns = filter(lambda event: event[3] == 2 and event[1] in self.mobile_units, events["spawn"])
+
+        for spawn in self.latest_enemy_spawns:
+            if spawn[1] == 3:
+                debug_write("enemy spawned Scout at: " + str(spawn[0]))
+            elif spawn[1] == 4:
+                debug_write("enemy spawned Demolisher at: " + str(spawn[0]))
+            elif spawn[1] == 5:
+                debug_write("enemy spawned Interceptor at: " + str(spawn[0]))
+
+        self.latest_enemy_removes = filter(lambda event: event[3] == 2 and event[1] == 6, events["spawn"])
+        for unit in self.latest_enemy_removes:
+            debug_write("enemy removed a unit at: " + str(unit[0]))
+
         for breach in breaches:
             location = breach[0]
             unit_owner_self = True if breach[4] == 1 else False
             # When parsing the frame data directly, 
             # 1 is integer for yourself, 2 is opponent (StarterKit code uses 0, 1 as player_index instead)
             if not unit_owner_self:
-                debug_write("[DEBUG] Got scored on at: {}".format(location))
+                # debug_write("[DEBUG] Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
-                debug_write("[DEBUG] All scored on locations: {}".format(self.scored_on_locations))
+                # debug_write("[DEBUG] All scored on locations: {}".format(self.scored_on_locations))
 
 
 if __name__ == "__main__":
