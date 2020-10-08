@@ -18,23 +18,32 @@ class Utility:
         self.change_flag = False
 
     def append_action(self, id: str, unit_type: str,
-                      locations: Union[List[int], List[List[int]]], upgrade=False) -> None:
+                      locations: List[List[int]], upgrade=False) -> None:
         """
         Appends an action to the to the end of the priority queue
+        Removes the locations from other actions which use them
         """
+        locations_set = set(map(lambda location: self.point_hash(location), locations))
+
         index = -1
-        for i, entry in enumerate(self.action_queue):
-            if entry['id'] == id:
+        for i, action in enumerate(self.action_queue):
+            if upgrade is False and action['upgrade'] is False:
+                overlap = set(map(lambda location: self.point_hash(location), action['locations'])) & locations_set
+            else:
+                overlap = set()
+            for location in overlap:
+                action['locations'].remove(self.inv_point_hash(location))
+                debug_write("trimmed locations for id: " + id + " to: " + str(action["locations"]))
+
+            if action['id'] == id:
                 index = i
-                break
 
         if index != -1:
-            debug_write("[DEBUG] cannot append existing action:", id)
-            return
+            debug_write("[DEBUG] automatically overwriting action id: " + id)
+            self.remove_action(id)
 
         self.change_flag = True
-        location_list = [locations] if type(locations[0]) is int else locations
-        action_object = {'id': id, 'unit_type': unit_type, 'locations': location_list, 'upgrade': upgrade}
+        action_object = {'id': id, 'unit_type': unit_type, 'locations': locations, 'upgrade': upgrade}
         self.action_queue.append(action_object)
 
     def prioritize_action(self, id: str) -> None:
@@ -66,13 +75,15 @@ class Utility:
                 break
 
         if index == -1:
-            debug_write("[DEBUG] cannot remove nonexistant action:", id)
-            raise ValueError('Cannot remove nonexistant action')
+            return
 
         self.change_flag = True
         remove_locations = self.action_queue[index].get('locations', [])
         for location in remove_locations:
-            self.all_defenses.remove(self.point_hash(location))
+            try:
+                self.all_defenses.remove(self.point_hash(location))
+            except:
+                pass
 
         self.action_queue.pop(index)
 

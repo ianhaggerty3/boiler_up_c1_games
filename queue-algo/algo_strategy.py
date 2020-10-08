@@ -23,26 +23,44 @@ Advanced strategy tips:
 
 
 class AlgoStrategy(AlgoCore):
+    utility: Utility
+    ARENA_SIZE: int
+    factory_height: int
     cached_health: int
     health: int
-    utility: Utility
+    current_mp: int
+    current_sp: int
     mobile_units: Set[Union[str, int]]
+    scored_on_locations: List[List[int]]
+    recent_scored_on_locations: List[List[int]]
     latest_enemy_spawns: List[Union[str, int, List[int]]]
     latest_enemy_removes: List[Union[str, int, List[int]]]
+    factory_locations: List[List[int]]
+
+    wall_upgrade_added: bool
 
     def __init__(self):
         super().__init__()
+        # utility functions for data structures, mostly
+        self.utility = Utility()
         self.ARENA_SIZE = 28
+        self.factory_height = 9
 
         seed = random.randrange(maxsize)
         random.seed(seed)
         debug_write('Random seed: {}'.format(seed))
 
+        self.factory_locations = list(self.factory_location_generator(self.factory_height))
+        random.shuffle(self.factory_locations)
+
         self.scored_on_locations = []
+        self.recent_scored_on_locations = []
         self.mobile_units = set()
         self.latest_enemy_spawns = []
 
-        self.utility = Utility()
+        # macro game stage bools
+        self.wall_upgrade_added = False
+
 
     def on_game_start(self, config):
         """ 
@@ -86,6 +104,9 @@ class AlgoStrategy(AlgoCore):
         debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)
 
+        self.current_mp = game_state.get_resource(MP, 0)
+        self.current_sp = game_state.get_resource(SP, 0)
+
         self.dynamic_strategy(game_state)
         self.cached_health = self.health
 
@@ -98,41 +119,68 @@ class AlgoStrategy(AlgoCore):
         For offense we will use long range demolishers if they place stationary units near the enemy's front.
         If there are no stationary units to attack in the front, we will send Scouts to try and score quickly.
         """
-        # First, place basic defenses
-        # self.build_defences(game_state)
-        # Now build reactive defenses based on where the enemy scored
-        if self.cached_health != self.health:
+
+        # initial strategy is highly dependent on expected units. Don't want to react until after we've built a little.
+        if len(self.recent_scored_on_locations) and game_state.turn_number > 3:
             self.build_reactive_defense()
 
-        # If the turn is less than 5, try to get them with a destructor
-        factory_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
-        
-        if game_state.turn_number < 3:
+        # On the initial turn, try to get them with a destructor
+        if game_state.turn_number == 0:
             self.send_initial_destructor(game_state)
-            self.utility.append_action("upgrade_factories", '', factory_locations, upgrade = True)
-            self.utility.append_action("extra_factories", FACTORY, factory_locations)
-        if game_state.turn_number == 3:
-            self.utility.append_action("upgrade_factories", '', factory_locations, upgrade = True)
-            self.utility.append_action('extra_factories', FACTORY, factory_locations)
-        if game_state.turn_number >= 3:
-            # Now let's analyze the enemy base to see where their defenses are concentrated.
-            # If they have many units in the front we can build a line for our demolishers to attack them at long range.
-            # if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 15]) > 10:
-            #     self.demolisher_line_strategy(game_state)
-            # else:
-            # They don't have many units in the front so lets figure out their least defended area and send Scouts there.
 
-            # Only spawn Scouts every other turn
-            # Sending more at once is better since attacks can only hit a single scout at a time
-            self.incremental_turret(game_state)
-            if game_state.turn_number % 2 == 1:
-                # To simplify we will just check sending them from back left and right
-                scout_spawn_location_options = [[10, 3], [11, 2], [16, 3], [17, 3]]
-                try:
-                    best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
-                    game_state.attempt_spawn(SCOUT, best_location, 1000)
-                except ValueError:
-                    debug_write('could not find a path for spawning')
+        if game_state.turn_number == 1:
+            self.utility.append_action('initial_turret_upgrades', TURRET, [[3, 13], [24, 13]], upgrade=True)
+            self.utility.prioritize_action('initial_turret_upgrades')
+            game_state.attempt_spawn(INTERCEPTOR, [3, 11], num=2)
+            game_state.attempt_spawn(INTERCEPTOR, [23, 9], num=1)
+
+        if game_state.turn_number == 2:
+            # we want to manually manage and not upgrade these specific walls
+            self.build_left_side_wall(game_state)
+            self.build_right_side_wall(game_state)
+
+            game_state.attempt_spawn(INTERCEPTOR, [5, 8], num=2)
+            game_state.attempt_spawn(INTERCEPTOR, [22, 8], num=1)
+
+            self.utility.remove_action('initial_walls')
+            self.utility.append_action('frontal_wall', WALL, self.get_frontal_wall())
+
+            # put upgrades before spawns to upgrade before spawning more; these cover the rest of the game
+            self.utility.append_action("upgrade_factories", '', self.factory_locations, True)
+            self.utility.append_action("extra_factories", FACTORY, self.factory_locations)
+
+        if game_state.turn_number == 3:
+            game_state.attempt_spawn(INTERCEPTOR, [5, 8], num=2)
+            game_state.attempt_spawn(INTERCEPTOR, [22, 8], num=1)
+
+        if game_state.turn_number == 4:
+            self.utility.remove_action('initial_turrets')
+            self.utility.remove_action('initial_turret_upgrades')
+            self.utility.append_action('frontal_turrets', TURRET, self.get_frontal_turrets())
+            self.utility.append_action('frontal_turret_upgrades', TURRET, self.get_frontal_turrets(), upgrade=True)
+            self.utility.prioritize_action('frontal_turrets')
+            self.utility.prioritize_action('frontal_turret_upgrades')
+
+        # attack logic; manually building to maintain walls if they are destroyed
+        if game_state.turn_number >= 4:
+            if game_state.turn_number % 6 == 4:
+                self.destroy_left_side_wall(game_state)
+                self.build_right_side_wall(game_state)
+            if game_state.turn_number % 6 == 5:
+                self.mount_left_attack(game_state)
+                self.build_right_side_wall(game_state)
+            if game_state.turn_number % 6 == 0:
+                self.build_left_side_wall(game_state)
+                self.build_right_side_wall(game_state)
+            if game_state.turn_number % 6 == 1:
+                self.destroy_right_side_wall(game_state)
+                self.build_left_side_wall(game_state)
+            if game_state.turn_number % 6 == 2:
+                self.mount_right_attack(game_state)
+                self.build_left_side_wall(game_state)
+            if game_state.turn_number % 6 == 3:
+                self.build_right_side_wall(game_state)
+                self.build_left_side_wall(game_state)
 
         # always try to use more resources
         self.utility.attempt_actions(game_state)
@@ -143,26 +191,89 @@ class AlgoStrategy(AlgoCore):
         """
         if(game_state.turn_number > 4):
             turret_build = [[23 - x, 13] for x in range(game_state.turn_number - 3)]
+            self.utility.remove_action("add_front_turrets")
+            self.utility.remove_action("upgrade_front_turrets")
             self.utility.append_action("upgrade_front_turrets", '', turret_build, upgrade=True)
-            self.utility.append_action("upgrade_front_turrets", '', turret_build)
+            self.utility.append_action("add_front_turrets", '', turret_build)
 
-    def wall_surround(self, locations: List[List[int]]):
+    def get_frontal_wall(self):
         """
-        Surround the passed spot with walls, including the spot itself if empty
+        Fill in everywhere between the side turrets. Leave space for future turrets at four spaces, and a middle gap
         """
-        new_locations = []
-        for location in locations:
-            # we might eventually want to block where we spawn walls, but for now this logic isn't good enough; it can
-            # still block useful paths, but prevents us from putting walls in some much-needed locations
-            # new_locations += list(filter(
-            #     lambda entry: not self.on_edge(entry),
-            #     [[location[0], location[1]], [location[0] + 1, location[1]],
-            #      [location[0] - 1, location[1]], [location[0], location[1] + 1]]
-            # ))
-            new_locations += [[location[0], location[1]], [location[0] + 1, location[1]],
-                              [location[0] - 1, location[1]], [location[0], location[1] + 1]]
+        return [[4, 12], [5, 13], [6, 13], [7, 13], [8, 13], [9, 13], [10, 13], [11, 12], [12, 13], [13, 12],
+                        [14, 12], [15, 13], [16, 12], [17, 13], [18, 13], [19, 13], [20, 13], [21, 13], [22, 13],
+                        [23, 12]]
 
-        self.utility.append_action('surround_walls' + str(len(locations)), WALL, new_locations)
+    def get_frontal_turrets(self):
+        """
+        Frontal turrets along the wall, which are in an intended order
+        """
+        return [[4, 13], [23, 13], [16, 13], [11, 13], [3, 13], [24, 13]]
+
+    def factory_location_generator(self, starting_y: int):
+        """"
+            Generates locations for factories beneath a certain y value
+            Leaves space open always for scouts
+        """
+        for y in range(0, starting_y + 1):
+            for x in range(15 - y, 13 + y):
+                yield [x, y]
+
+    def mount_left_attack(self, game_state: GameState):
+        # might want to base this off of whether our wall will be intact or not; changes pathing
+        # might want to make demolishers proportional to resources, rather than 4 flat
+        game_state.attempt_spawn(DEMOLISHER, [3, 10], num=4)
+
+        temp_sp = self.current_sp - 16
+        x = 14
+        y = 0
+        # by staggering like this, you prevent self destruct problems
+        debug_write("entering left attack while loop with temp_sp = " + str(temp_sp))
+        while (temp_sp > 0) and (y < self.factory_height):
+            debug_write("iteration with x = " + str(x) + " and y = " + str(y))
+            game_state.attempt_spawn(SCOUT, [x, y], num=20)
+            temp_sp -= 20
+            x += 1
+            y += 1
+        game_state.attempt_spawn(SCOUT, [14, 0], num=1000)
+
+    def mount_right_attack(self, game_state: GameState):
+        game_state.attempt_spawn(DEMOLISHER, [24, 10], num=4)
+
+        temp_sp = self.current_sp - 16
+        x = 13
+        y = 0
+        # by staggering like this, you prevent self destruct problems
+        debug_write("entering right attack while loop with temp_sp = " + str(temp_sp))
+        while (temp_sp > 0) and (y < self.factory_height):
+            debug_write("iteration with x = " + str(x) + " and y = " + str(y))
+            game_state.attempt_spawn(SCOUT, [x, y], num=20)
+            temp_sp -= 20
+            x -= 1
+            y += 1
+        game_state.attempt_spawn(SCOUT, [13, 0], num=1000)
+
+
+    ### The side walls need to be manually managed, because they are integral to attacking maneuvers
+    def build_side_walls(self, game_state: GameState):
+        self.build_left_side_wall(game_state)
+        self.build_right_side_wall(game_state)
+
+    def build_left_side_wall(self, game_state: GameState):
+        game_state.attempt_spawn(WALL, [[0, 13], [1, 13], [2, 13]])
+
+    def build_right_side_wall(self, game_state: GameState):
+        game_state.attempt_spawn(WALL, [[27, 13], [26, 13], [25, 13]])
+
+    def destroy_side_walls(self, game_state: GameState):
+        self.destroy_left_side_wall(game_state)
+        self.destroy_right_side_wall(game_state)
+
+    def destroy_left_side_wall(self, game_state: GameState):
+        game_state.attempt_remove([[0, 13], [1, 13], [2, 13]])
+
+    def destroy_right_side_wall(self, game_state: GameState):
+        game_state.attempt_remove([[27, 13], [26, 13], [25, 13]])
 
     def add_initial_defence(self) -> None:
         """
@@ -176,17 +287,18 @@ class AlgoStrategy(AlgoCore):
         turret_locations = [[3, 13], [24, 13]]
         self.utility.append_action('initial_turrets', TURRET, turret_locations)
 
-        # initial_upgrades = [[5, 13], [24, 13]]
-        # self.utility.append_action('initial_upgrades', '', initial_upgrades, upgrade=True)
-
-        # Place walls in front of turrets to soak up damage for them
-        # self.wall_surround(turret_locations)
-
-        wall_locations = [[0, 13], [27, 13], [12, 13], [13, 13], [14, 13], [15, 13]]
+        wall_locations = [[0, 13], [27, 13], [12, 13], [13, 12], [14, 12], [15, 13]]
         self.utility.append_action('initial_walls', WALL, wall_locations)
 
         factory_locations = [[3, 12]]
         self.utility.append_action('initial_factories', FACTORY, factory_locations)
+        self.utility.append_action('initial_factory_upgrade', FACTORY, factory_locations, upgrade=True)
+
+    def get_response_location(self, location: List[int]):
+        if location[0] < self.ARENA_SIZE // 2:
+            return [location[0] + 1, location[1] + 1]
+        else:
+            return [location[0] - 1, location[1] + 1]
 
     def build_reactive_defense(self):
         """
@@ -195,50 +307,22 @@ class AlgoStrategy(AlgoCore):
         as shown in the on_action_frame function
         """
 
-        try:
-            self.utility.remove_action('response_turrets')
-            self.utility.remove_action('upgrade_response_turrets')
-        except ValueError:
-            pass
-        self.utility.append_action('upgrade_response_turrets', '', self.scored_on_locations, True)
-        self.utility.append_action('response_turrets', TURRET, self.scored_on_locations)
+        self.utility.remove_action('response_turrets')
+        self.utility.remove_action('upgrade_response_turrets')
+
+        response_locations = list(map(self.get_response_location, self.recent_scored_on_locations))
+
+        self.utility.append_action('response_turrets', TURRET, response_locations)
+        self.utility.append_action('upgrade_response_turrets', '', response_locations, True)
         self.utility.prioritize_action('upgrade_response_turrets')
         self.utility.prioritize_action('response_turrets')
-        # don't really want to put turrets there
-        # for location in self.scored_on_locations:
-        #     # Build turret one space above so that it doesn't block our own edge spawn locations
-        #     # build_location = [location[0], location[1]+1]
-        #     # game_state.attempt_spawn(TURRET, build_location)
-        #     self.wall_surround(self.scored_on_locations)
 
     def send_initial_destructor(self, game_state: GameState):
         """
         Send out a demolisher to get enemy factories at the start
         """
-        game_state.attempt_spawn(DEMOLISHER, [1, 12], num=4)
+        game_state.attempt_spawn(DEMOLISHER, [1, 12])
         game_state.attempt_spawn(INTERCEPTOR, [4, 9])
-
-    def demolisher_line_strategy(self, game_state: GameState):
-        """
-        Build a line of the cheapest stationary unit so our demolisher can attack from long range.
-        """
-        # First let's figure out the cheapest unit
-        # We could just check the game rules, but this demonstrates how to use the GameUnit class
-        stationary_units = [WALL, TURRET, FACTORY]
-        cheapest_unit = WALL
-        for unit in stationary_units:
-            unit_class = GameUnit(unit, game_state.config)
-            if unit_class.cost[game_state.MP] < GameUnit(cheapest_unit, game_state.config).cost[game_state.MP]:
-                cheapest_unit = unit
-
-        # Now let's build out a line of stationary units. This will prevent our demolisher from running into the enemy base.
-        # Instead they will stay at the perfect distance to attack the front two rows of the enemy base.
-        for x in range(27, 5, -1):
-            game_state.attempt_spawn(cheapest_unit, [x, 11])
-
-        # Now spawn demolishers next to the line
-        # By asking attempt_spawn to spawn 1000 units, it will essentially spawn as many as we have resources for
-        game_state.attempt_spawn(DEMOLISHER, [24, 10], 1000)
 
     def least_damage_spawn_location(self, game_state: GameState, location_options: List[List[int]]):
         """
@@ -270,6 +354,15 @@ class AlgoStrategy(AlgoCore):
             if game_state.contains_stationary_unit(location):
                 for unit in game_state.game_map[location]:
                     if unit.player_index == 1 and (unit_type is None or unit.unit_type == unit_type) and (valid_x is None or location[0] in valid_x) and (valid_y is None or location[1] in valid_y):
+                        total_units += 1
+        return total_units
+
+    def detect_own_unit(self, game_state: GameState, unit_type=None, valid_x = None, valid_y = None):
+        total_units = 0
+        for location in game_state.game_map:
+            if game_state.contains_stationary_unit(location):
+                for unit in game_state.game_map[location]:
+                    if unit.player_index == 0 and (unit_type is None or unit.unit_type == unit_type) and (valid_x is None or location[0] in valid_x) and (valid_y is None or location[1] in valid_y):
                         total_units += 1
         return total_units
 
@@ -329,6 +422,7 @@ class AlgoStrategy(AlgoCore):
         for unit in self.latest_enemy_removes:
             debug_write("enemy removed a unit at: " + str(unit[0]))
 
+        self.recent_scored_on_locations = []
         for breach in breaches:
             location = breach[0]
             unit_owner_self = True if breach[4] == 1 else False
@@ -337,8 +431,32 @@ class AlgoStrategy(AlgoCore):
             if not unit_owner_self:
                 # debug_write("[DEBUG] Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
+                self.recent_scored_on_locations.append(location)
+                debug_write("[DEBUG] Recent scored on locations: {}".format(self.recent_scored_on_locations))
                 # debug_write("[DEBUG] All scored on locations: {}".format(self.scored_on_locations))
 
+
+    # def demolisher_line_strategy(self, game_state: GameState):
+    #     """
+    #     Build a line of the cheapest stationary unit so our demolisher can attack from long range.
+    #     """
+    #     # First let's figure out the cheapest unit
+    #     # We could just check the game rules, but this demonstrates how to use the GameUnit class
+    #     stationary_units = [WALL, TURRET, FACTORY]
+    #     cheapest_unit = WALL
+    #     for unit in stationary_units:
+    #         unit_class = GameUnit(unit, game_state.config)
+    #         if unit_class.cost[game_state.MP] < GameUnit(cheapest_unit, game_state.config).cost[game_state.MP]:
+    #             cheapest_unit = unit
+    #
+    #     # Now let's build out a line of stationary units. This will prevent our demolisher from running into the enemy base.
+    #     # Instead they will stay at the perfect distance to attack the front two rows of the enemy base.
+    #     for x in range(27, 5, -1):
+    #         game_state.attempt_spawn(cheapest_unit, [x, 11])
+    #
+    #     # Now spawn demolishers next to the line
+    #     # By asking attempt_spawn to spawn 1000 units, it will essentially spawn as many as we have resources for
+    #     game_state.attempt_spawn(DEMOLISHER, [24, 10], 1000)
 
 if __name__ == "__main__":
     algo = AlgoStrategy()
