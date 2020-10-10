@@ -100,7 +100,6 @@ class Utility:
             max_actions = action['max_num']
             taken_actions = 0
             for location in action['locations']:
-
                 if not action['upgrade']:
                     taken_actions += game_state.attempt_spawn(action['unit_type'], location)
                 else:
