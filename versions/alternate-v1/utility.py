@@ -18,7 +18,7 @@ class Utility:
         self.change_flag = False
 
     def append_action(self, id: str, unit_type: str,
-                      locations: List[List[int]], upgrade=False, max_num=9999) -> None:
+                      locations: List[List[int]], upgrade=False) -> None:
         """
         Appends an action to the to the end of the priority queue
         Removes the locations from other actions which use them
@@ -43,7 +43,7 @@ class Utility:
             self.remove_action(id)
 
         self.change_flag = True
-        action_object = {'id': id, 'unit_type': unit_type, 'locations': locations, 'upgrade': upgrade, 'max_num': max_num}
+        action_object = {'id': id, 'unit_type': unit_type, 'locations': locations, 'upgrade': upgrade}
         self.action_queue.append(action_object)
 
     def prioritize_action(self, id: str) -> None:
@@ -94,22 +94,15 @@ class Utility:
         """
 
         if self.change_flag:
-            self.refresh_upgrade_all(game_state)
+            self.refresh_upgrade_all()
 
         for action in self.action_queue:
-            max_actions = action['max_num']
-            taken_actions = 0
-            for location in action['locations']:
+            if not action['upgrade']:
+                game_state.attempt_spawn(action['unit_type'], action['locations'])
+            else:
+                game_state.attempt_upgrade(action['locations'])
 
-                if not action['upgrade']:
-                    taken_actions += game_state.attempt_spawn(action['unit_type'], location)
-                else:
-                    taken_actions += game_state.attempt_upgrade(location)
-
-                if taken_actions >= max_actions:
-                    break
-
-    def refresh_upgrade_all(self, game_state: GameState):
+    def refresh_upgrade_all(self):
         try:
             self.remove_action('upgrade_all')
         except ValueError:
@@ -120,13 +113,7 @@ class Utility:
                 continue
             self.all_defenses += action['locations']
 
-        if game_state.turn_number < 10:
-            self.append_action('upgrade_all', '', self.all_defenses, upgrade=True, max_num=1)
-        elif game_state.turn_number < 15:
-            self.append_action('upgrade_all', '', self.all_defenses, upgrade=True, max_num=2)
-        else:
-            self.append_action('upgrade_all', '', self.all_defenses, upgrade=True, max_num=4)
-
+        self.append_action('upgrade_all', '', self.all_defenses, upgrade=True)
         self.change_flag = False
 
     def point_hash(self, location: List[int]) -> int:

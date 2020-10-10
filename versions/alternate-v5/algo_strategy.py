@@ -60,7 +60,7 @@ class AlgoStrategy(AlgoCore):
         self.recent_scored_on_locations = []
         self.mobile_units = set()
         self.latest_enemy_spawns = []
-        self.attack_strategy = self.even_sides_strategy
+
         # macro game stage bools
         self.wall_upgrade_added = False
 
@@ -174,99 +174,31 @@ class AlgoStrategy(AlgoCore):
             game_state.attempt_upgrade([[0, 13], [27, 13], [3, 12], [3, 11], [24, 12], [24, 11], [1, 12], [2, 12], [2, 11], [26, 12],
                                         [25, 12], [25, 11]])
 
-        if game_state.turn_number == 15:
-            self.utility.append_action('secondary_wall', WALL, self.get_secondary_wall())
-            self.utility.append_action('secondary_turrets', TURRET, self.get_secondary_turrets())
-            self.utility.prioritize_action('secondary_wall')
-            self.utility.prioritize_action('secondary_turrets')
-            self.utility.prioritize_action('frontal_wall')
-            self.utility.prioritize_action('frontal_turrets')
-
         # attack logic; manually building to maintain walls if they are destroyed
-        if game_state.turn_number == 4:
-            self.attack_strategy = self.get_attack_strategy(game_state)
-
-        if game_state.turn_number >= 4:
-            self.attack_strategy(game_state)
+        if game_state.turn_number - self.delay >= 4:
+            if game_state.turn_number % 6 == 4:
+                self.destroy_left_side_wall(game_state)
+                self.build_right_side_wall(game_state)
+            if game_state.turn_number % 6 == 5:
+                self.mount_left_attack(game_state)
+                self.build_right_side_wall(game_state)
+            if game_state.turn_number % 6 == 0:
+                self.build_left_side_wall(game_state)
+                self.build_right_side_wall(game_state)
+            if game_state.turn_number % 6 == 1:
+                self.destroy_right_side_wall(game_state)
+                self.build_left_side_wall(game_state)
+            if game_state.turn_number % 6 == 2:
+                self.mount_right_attack(game_state)
+                self.build_left_side_wall(game_state)
+            if game_state.turn_number % 6 == 3:
+                self.build_right_side_wall(game_state)
+                self.build_left_side_wall(game_state)
 
         # always try to use more resources
         self.utility.attempt_actions(game_state)
-
-    def even_sides_strategy(self, game_state: GameState):
-        if game_state.turn_number - self.delay >= 4:
-            if game_state.turn_number % 6 == 4:
-                self.destroy_left_side_wall(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 5:
-                self.mount_left_attack(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 0:
-                self.build_left_side_wall(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 1:
-                self.destroy_right_side_wall(game_state)
-                self.build_left_side_wall(game_state)
-            if game_state.turn_number % 6 == 2:
-                self.mount_right_attack(game_state)
-                self.build_left_side_wall(game_state)
-            if game_state.turn_number % 6 == 3:
-                self.build_right_side_wall(game_state)
-                self.build_left_side_wall(game_state)
-
-    def left_side_strategy(self, game_state: GameState):
-        if game_state.turn_number - self.delay >= 4:
-            if game_state.turn_number % 6 == 4:
-                self.destroy_left_side_wall(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 5:
-                self.mount_left_attack(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 0:
-                self.build_left_side_wall(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 1:
-                self.destroy_left_side_wall(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 2:
-                self.mount_left_attack(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 3:
-                self.build_right_side_wall(game_state)
-                self.build_left_side_wall(game_state)
-
-    def right_side_strategy(self, game_state: GameState):
-        if game_state.turn_number - self.delay >= 4:
-            if game_state.turn_number % 6 == 4:
-                self.destroy_right_side_wall(game_state)
-                self.build_left_side_wall(game_state)
-            if game_state.turn_number % 6 == 5:
-                self.mount_right_attack(game_state)
-                self.build_left_side_wall(game_state)
-            if game_state.turn_number % 6 == 0:
-                self.build_left_side_wall(game_state)
-                self.build_right_side_wall(game_state)
-            if game_state.turn_number % 6 == 1:
-                self.destroy_right_side_wall(game_state)
-                self.build_left_side_wall(game_state)
-            if game_state.turn_number % 6 == 2:
-                self.mount_right_attack(game_state)
-                self.build_left_side_wall(game_state)
-            if game_state.turn_number % 6 == 3:
-                self.build_right_side_wall(game_state)
-                self.build_left_side_wall(game_state)
-
-    def get_attack_strategy(self, game_state: GameState):
-        left_turrets = self.detect_enemy_unit(game_state, unit_type=TURRET, valid_x=[0, 1, 2, 3, 4, 5, 6, 7], valid_y=[14, 13, 12, 11])
-        right_turrets = self.detect_enemy_unit(game_state, unit_type=TURRET, valid_x=[27, 26, 25, 24, 23, 22, 21, 20], valid_y=[14, 13, 12, 11])
-        diff = abs(left_turrets - right_turrets)
-        if diff < 2:
-            return self.even_sides_strategy
-        elif left_turrets > right_turrets:
-            return self.right_side_strategy
-        else:
-            return self.left_side_strategy
-
-    def incremental_turret(self, game_state: GameState) -> None:
+        
+    def incremental_turret(self, game_state):
         """
             Attempt to build out Turrets from one side as the game progresses
         """
@@ -277,7 +209,7 @@ class AlgoStrategy(AlgoCore):
             self.utility.append_action("upgrade_front_turrets", '', turret_build, upgrade=True)
             self.utility.append_action("add_front_turrets", '', turret_build)
 
-    def get_frontal_wall(self) -> List[List[int]]:
+    def get_frontal_wall(self):
         """
         Fill in everywhere between the side turrets. Leave space for future turrets at four spaces, and a middle gap
         """
@@ -285,19 +217,13 @@ class AlgoStrategy(AlgoCore):
                 [11, 12], [16, 12], [10, 13], [17, 13], [9, 13], [18, 13], [8, 13], [19, 13], [7, 13], [20, 13],
                 [6, 13], [21, 13], [5, 13], [22, 13]]
 
-    def get_secondary_wall(self) -> List[List[int]]:
-        return [[x, 12] for x in range(5, 23) if x % 2 == 0]
-
-    def get_secondary_turrets(self) -> List[List[int]]:
-        return [[x, 12] for x in range(5, 23) if x % 2 == 1]
-
-    def get_frontal_turrets(self) -> List[List[int]]:
+    def get_frontal_turrets(self):
         """
         Frontal turrets along the wall, which are in an intended order
         """
         return [[16, 13], [11, 13], [3, 13], [24, 13]]
 
-    def factory_location_generator(self, starting_y: int) -> List[int]:
+    def factory_location_generator(self, starting_y: int):
         """"
             Generates locations for factories beneath a certain y value
             Leaves space open always for scouts

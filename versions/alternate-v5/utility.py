@@ -126,7 +126,7 @@ class Utility:
             self.append_action('upgrade_all', '', self.all_defenses, upgrade=True, max_num=2)
         else:
             self.append_action('upgrade_all', '', self.all_defenses, upgrade=True, max_num=4)
-
+        
         self.change_flag = False
 
     def point_hash(self, location: List[int]) -> int:

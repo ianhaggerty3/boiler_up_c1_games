@@ -78,6 +78,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         # Now build reactive defenses based on where the enemy scored
         self.build_reactive_defense(game_state)
 
+        if game_state.turn_number == 2:
+            game_state.attempt_remove([[8, 11]])
+
         # If the turn is less than 5, stall with interceptors and wait to see enemy's base
         if game_state.turn_number < 5:
             self.stall_with_interceptors(game_state)
