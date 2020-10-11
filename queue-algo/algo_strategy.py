@@ -88,7 +88,8 @@ class AlgoStrategy(AlgoCore):
         group_ratings = [sum(column_danger[(i*4):((i*4) + 4)]) for i in range(5)]
         selected_group = group_ratings.index(min(group_ratings))
         selected_x = column_danger[selected_group * 4: (selected_group * 4) + 4].index(min(column_danger[selected_group * 4: (selected_group * 4) + 4]))
-        return x_vals[selected_x]
+        debug_write(str(4*selected_group + selected_x))
+        return x_vals[4*selected_group + selected_x]
 
 
 
