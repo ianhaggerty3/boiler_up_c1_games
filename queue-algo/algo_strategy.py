@@ -65,6 +65,33 @@ class AlgoStrategy(AlgoCore):
         self.wall_upgrade_added = False
 
 
+    def find_weakness(self, game_state):
+        x_vals = range(4, 24)
+        column_danger = []
+        turret_weight = 3
+        wall_weight = 2
+        for x in x_vals:
+            curr_val = 0
+            for y in range(14, 17):
+                target_unit = game_state.game_map[x, y][0]
+                if(target_unit.unit_type == TURRET):
+                    if(target_unit.upgraded):
+                        curr_val += turret_weight
+                    else:
+                        curr_val += turret_weight - 1
+                elif(target_unit.unit_type == WALL):
+                    if(target_unit.upgraded):
+                        curr_val += wall_weight
+                    else:
+                        curr_val += wall_weight - 1
+            column_danger.append(curr_val)
+        group_ratings = [sum(column_danger[(i*4):((i*4) + 4)]) for i in range(5)]
+        selected_group = group_ratings.index(min(group_ratings))
+        selected_x = column_danger[selected_group * 4: (selected_group * 4) + 4].index(min(column_danger[selected_group * 4: (selected_group * 4) + 4]))
+        return x_vals[selected_x]
+
+
+
     def on_game_start(self, config):
         """ 
         Read in config and perform any initial setup here 
@@ -542,6 +569,14 @@ class AlgoStrategy(AlgoCore):
     #     # Now spawn demolishers next to the line
     #     # By asking attempt_spawn to spawn 1000 units, it will essentially spawn as many as we have resources for
     #     game_state.attempt_spawn(DEMOLISHER, [24, 10], 1000)
+
+    def intercept_spawn(self, game_state):
+        ideal_spawn = []
+        for spawn in self.latest_enemy_spawns:
+            path = game_state.find_path_to_edge(spawn[0])
+            ideal_spawn.append(path[-1])
+
+
 
 if __name__ == "__main__":
     algo = AlgoStrategy()
